@@ -1,39 +1,92 @@
-SR-Merging NLP 标准推理代码
+# SR-Merging: Standard NLP Inference Implementation
 
-1. 三个模块位置
-   sr_merging/routing.py：ERC 离线均值压缩、SRR 在线相似度、TCSM Top-K 温度权重。
-   sr_merging/composition.py：所有专家常驻，按每条输入的权重组合完整 LoRA 更新。
-   sr_merging/pipeline.py：共享 Qwen 输出空间下的分类评分和生成。
+## 1. Core Modules
 
-2. 当前论文参数
-   Qwen2.5-0.5B-Instruct；Potion-base-2M；K=3；tau=0.8；FP32；batch=32。
-   LoRA r=8，alpha=32，dropout=0.1，bias=none，gate_proj/up_proj/down_proj。
-   dropout=0.1 是专家配置；推理时 eval() 会关闭 dropout。
-   每专家200条参考沿用最近的NLP成本配置；采样种子42+专家序号。
-   随机采样规则在README中明示，并记录选中行号和源文件SHA-256。
+- **`sr_merging/routing.py`**: ERC offline mean compression, SRR online similarity computation, and TCSM Top-K temperature-controlled weighting.
+- **`sr_merging/composition.py`**: Keeps all experts resident in memory and combines full LoRA updates using input-specific routing weights.
+- **`sr_merging/pipeline.py`**: Classification scoring and text generation in the shared Qwen output space.
 
-3. 使用顺序
-   安装：pip install -e .
-   配置：修改 configs/paper.json 中模型、专家、参考输入文件路径。
-   离线：python -m sr_merging build-bank --config configs/paper.json
-   在线分类：python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --candidates examples/candidates.json
-   在线生成：python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --max-new-tokens 64
+## 2. Paper Configuration
 
-4. 与论文一致的关键点
-   参考向量先逐条归一化，再求均值；均值绝不再次归一化。
-   推理只编码输入，bank不会重新生成。
-   每条输入分别选专家，不把整个batch强制路由到同一组专家。
-   组合的是 sum_i weight_i * scale_i * B_i A_i，不分别平均A/B。
-   所有层共用同一输入的路由权重；自回归生成期间不改变路由。
-   分类候选列表对所有输入完全相同，不按真实任务ID选择候选或分类头。
-   参考样本只需输入；构建bank时专家归属来自配置，查询不需要任务ID。
+- **Backbone model:** Qwen2.5-0.5B-Instruct
+- **Embedding encoder:** Potion-base-2M
+- **Routing parameters:** K=3, τ=0.8
+- **Precision:** FP32
+- **Batch size:** 32
+- **LoRA configuration:**
+  - Rank: r=8
+  - Alpha: 32
+  - Dropout: 0.1
+  - Bias: none
+  - Target modules: `gate_proj`, `up_proj`, `down_proj`
 
-5. 需填写的实际资产
-   本包不包含模型权重或参考数据。示例候选只有四个标签，不能作为完整GLUE评估映射。
-   生成预算64仅是命令示例，实际预算必须显式指定。
-   旧alpha或目标层不一致的adapter会报错；不能通过改JSON把旧权重当作论文训练权重。
-   本版本不内置旧K=1/hybrid路由，也不附加未验证的论文准确率。
+The dropout rate of 0.1 is part of the expert configuration and is disabled during inference by `eval()`.
 
-6. 测试
-   python -m unittest discover -s tests -v
-   测试使用随机初始化的微型Qwen，核对数学等价性和批量路由，不代表任务准确率。
+Each expert uses 200 reference samples, following the latest NLP cost configuration. The sampling seed is `42 + expert_index`.
+
+The random sampling procedure is explicitly documented in the README, along with the selected row indices and SHA-256 hashes of the source files.
+
+## 3. Usage
+
+**Installation**
+
+```bash
+pip install -e .
+```
+
+**Configuration**
+
+Update `configs/paper.json` with the paths to the backbone model, expert adapters, and reference input files.
+
+**Offline reference bank construction**
+
+```bash
+python -m sr_merging build-bank --config configs/paper.json
+```
+
+**Online classification**
+
+```bash
+python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --candidates examples/candidates.json
+```
+
+**Online text generation**
+
+```bash
+python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --max-new-tokens 64
+```
+
+## 4. Key Implementation Details Consistent with the Paper
+
+- **Reference construction:** Each reference embedding is individually normalized before averaging. The resulting mean vector is never renormalized.
+- **Online inference:** Only query inputs are encoded during inference. The reference bank is not rebuilt.
+- **Input-specific routing:** Experts are selected independently for each input, rather than assigning the entire batch to the same expert subset.
+- **LoRA composition:** Full LoRA updates are combined as `sum_i weight_i * scale_i * B_i A_i`. The A and B matrices are never averaged separately.
+- **Layer-wise consistency:** All adapted layers share the same input-dependent routing weights.
+- **Autoregressive generation:** Routing weights remain fixed throughout generation.
+- **Classification consistency:** All inputs share the same candidate label list. Neither candidate selection nor classification-head selection depends on the ground-truth task ID.
+- **Label-free routing:** Reference bank construction requires only reference inputs, with expert membership specified in the configuration. Query routing does not require task IDs.
+
+## 5. Required Assets and Limitations
+
+This package does not include pretrained model weights or reference datasets.
+
+The example candidate file contains only four labels and does not represent the complete GLUE evaluation label mapping.
+
+The generation budget of 64 tokens is provided only as a command-line example. The actual generation budget must be explicitly specified.
+
+Adapters trained with incompatible LoRA alpha values or target modules will raise errors. Modifying the JSON configuration cannot make incompatible legacy adapters equivalent to those trained with the paper's configuration.
+
+This version does not include the legacy K=1 or hybrid routing strategies, nor does it report unverified accuracy results from the paper.
+
+## 6. Testing
+
+Run the unit tests using:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The tests use a randomly initialized miniature Qwen model to verify mathematical equivalence and batch-wise routing behavior.
+
+**These tests validate implementation correctness but do not establish downstream task accuracy.**
