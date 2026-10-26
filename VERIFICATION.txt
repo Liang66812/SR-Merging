@@ -1,0 +1,25 @@
+Verification: 2026-10-26
+Environment: Python 3.12.2, macOS arm64, CPU.
+Pinned libraries: PyTorch 2.5.1, Transformers 4.57.6, PEFT 0.17.1,
+model2vec 0.6.0, NumPy 1.26.4.
+
+8 unittest cases passed:
+- ERC vs explicit average cosine and bank save/load.
+- Sparse softmax, shift invariance, K=1 and deterministic ties.
+- Zero means allowed; zero input embeddings rejected.
+- Per-input K=1 composition vs PEFT forward.
+- Weighted LoRA branches vs explicit dense parameter updates.
+- Batched generation vs per-input generation with fixed routes.
+- Loaded tiny Qwen/PEFT checkpoints: shared-candidate scoring vs full
+  teacher-forced logits; left-padded batch vs individual results; generation.
+- Deterministic reference sampling without replacement.
+
+Additional smoke: real local Potion-base-2M encoder built and loaded a
+3 x 64 FP32 reference bank; SRR + K=3, tau=0.8 routing completed.
+CLI --help and pip check passed.
+
+These are correctness checks, not benchmark accuracy or GPU latency results.
+Real task-expert GPU inference was not rerun: the server SSH connection timed out.
+Weights and source data are not distributed in this package.
+
+SR-Merging rename verified: all 8 tests passed again; sr-merging CLI installed and --help passed.

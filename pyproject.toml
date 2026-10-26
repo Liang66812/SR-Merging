@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sr-merging-nlp"
+version = "0.1.0"
+description = "Training-free semantic routing and sparse LoRA composition for NLP"
+requires-python = ">=3.10"
+dependencies = [
+  "torch==2.5.1",
+  "transformers==4.57.6",
+  "peft==0.17.1",
+  "model2vec==0.6.0",
+  "numpy==1.26.4"
+]
+
+[project.scripts]
+sr-merging = "sr_merging.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["sr_merging*"]

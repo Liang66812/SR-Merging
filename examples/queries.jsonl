@@ -1,0 +1,2 @@
+{"id":"sentiment-example","instruction":"Classify the sentiment as positive or negative. Return only the label.","input":"The movie was thoughtful and beautifully acted."}
+{"id":"entailment-example","instruction":"Determine whether the premise entails the hypothesis. Return entailment or not_entailment.","input":"Premise: A woman is playing the violin. Hypothesis: A person is playing an instrument."}
