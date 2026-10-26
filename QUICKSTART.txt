@@ -1,0 +1,57 @@
+SR-Merging NLP Inference: Quick Start
+
+1. Modules
+   sr_merging/routing.py: offline ERC mean compression, online SRR similarity
+   scoring, and TCSM top-K selection with temperature-controlled weights.
+   sr_merging/composition.py: resident experts and per-input composition of
+   effective LoRA updates.
+   sr_merging/pipeline.py: classification scoring and generation using the
+   shared Qwen output space.
+
+2. Configuration
+   Qwen2.5-0.5B-Instruct; Potion-base-2M; K=3; tau=0.8; FP32; batch size=32.
+   LoRA: rank=8, alpha=32, dropout=0.1, bias=none;
+   target modules: gate_proj, up_proj, down_proj.
+   Dropout=0.1 describes the expert configuration; eval() disables it at inference.
+   The default of 200 references per expert follows the recent NLP cost setup.
+   Sampling uses seed 42 plus the expert index. The README specifies the sampling
+   rule; selected line IDs and source-file SHA-256 hashes are recorded in the bank.
+
+3. Workflow
+   Install:
+     pip install -e .
+   Configure model, adapter, and reference-file paths in configs/paper.json.
+   Build the offline reference bank:
+     python -m sr_merging build-bank --config configs/paper.json
+   Classify inputs:
+     python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --candidates examples/candidates.json
+   Generate outputs:
+     python -m sr_merging infer --config configs/paper.json --input examples/queries.jsonl --output predictions.jsonl --max-new-tokens 64
+
+4. Method Details
+   Normalize each reference embedding before averaging. Never renormalize the mean.
+   Encode only incoming queries online; do not reconstruct the reference bank.
+   Select experts separately for each input, including inputs in the same batch.
+   Compose sum_i weight_i * scale_i * B_i A_i; do not average A and B separately.
+   Share each input's routing weights across adapted layers and keep them fixed
+   throughout autoregressive generation.
+   Use the same candidate list for every classification input. Ground-truth task
+   IDs do not select candidate subsets or prediction heads.
+   References require inputs only. Expert membership comes from the offline
+   configuration; incoming queries do not require task IDs.
+
+5. Required Assets and Evaluation Settings
+   Model weights and reference data are not included.
+   The example candidate file contains four labels; it is not the full GLUE
+   evaluation mapping. Supply the shared candidate space used by your evaluation.
+   The generation budget of 64 is an example; specify the actual budget explicitly.
+   Adapters with incompatible alpha values or target modules raise an error.
+   Editing configuration metadata does not convert old weights into checkpoints
+   trained with the paper's configuration.
+   This implementation does not include the historical K=1/hybrid routing policy
+   or unverified benchmark accuracy claims.
+
+6. Tests
+   python -m unittest discover -s tests -v
+   Tests use a randomly initialized tiny Qwen to check mathematical equivalence
+   and per-input batch routing. They do not measure task accuracy.
